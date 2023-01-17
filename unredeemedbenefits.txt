@@ -1,0 +1,33 @@
+# The following action prompts you to select an Excel file (*.xls*) that contains the table you want to extract.
+Display.SelectFileDialog.SelectFile Title: $'''Select the excel file to extract table from...''' FileFilter: $'''*.xls*''' IsTopMost: True CheckIfFileExists: True SelectedFile=> SelectedFile ButtonPressed=> ButtonPressed
+# The following 'If' action checks whether the 'Cancel' button was pressed in the select file dialog. If not, the flow launches the selected Excel file and extracts the table.
+IF ButtonPressed <> $'''Cancel''' THEN
+    Excel.LaunchExcel.LaunchAndOpen Path: SelectedFile Visible: True ReadOnly: False LoadAddInsAndMacros: False Instance=> ExcelInstance
+    ON ERROR REPEAT 1 TIMES WAIT 2
+    END
+    # The flow locates the first empty row and column in the Excel spreadsheet and uses them to define the appropriate range of cells to read.
+    Excel.GetFirstFreeColumnRow Instance: ExcelInstance FirstFreeColumn=> FirstFreeColumn FirstFreeRow=> FirstFreeRow
+    Excel.ReadFromExcel.ReadCells Instance: ExcelInstance StartColumn: 5 StartRow: 1 EndColumn: 5 EndRow: FirstFreeRow - 4 ReadAsText: False FirstLineIsHeader: True RangeValue=> Benefits
+    Excel.CloseExcel.Close Instance: ExcelInstance
+    Variables.RetrieveDataTableColumnIntoList DataTable: Benefits ColumnNameOrIndex: 0 ColumnAsList=> BenefitsList
+    Variables.CreateNewList List=> ListofDuplicates
+    LOOP FOREACH Benefit IN BenefitsList
+        SET Counter TO 0
+        LOOP FOREACH ListItem IN BenefitsList
+            IF Benefit = ListItem THEN
+                Variables.IncreaseVariable Value: Counter IncrementValue: 1
+            END
+        END
+        IF Counter > 1 THEN
+            Variables.AddItemToList Item: Benefit List: ListofDuplicates
+        END
+    END
+    Variables.RemoveDuplicateItemsFromList List: ListofDuplicates IgnoreCase: False
+    LOOP FOREACH Duplicate IN ListofDuplicates
+        Variables.RemoveItemFromList.RemoveItemFromListByValue Item: Duplicate ItemMatchAllOccurrences: True List: BenefitsList
+    END
+END
+Clipboard.SetText Text: BenefitsList
+Display.ShowMessageDialog.ShowMessageWithTimeout Title: $'''Paste this list to #MAIL nr 3''' Message: $'''Nr of redeemable benefits: %BenefitsList.Count%
+%BenefitsList%''' Icon: Display.Icon.Information Buttons: Display.Buttons.OK DefaultButton: Display.DefaultButton.Button1 IsTopMost: True Timeout: 5
+File.Delete Files: SelectedFile
